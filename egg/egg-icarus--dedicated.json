@@ -1,0 +1,80 @@
+{
+    "_comment": "pavl21 / Icarus Dedicated — source of truth lives at github.com/pavl21/icarus-dedicated",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-05-28T00:00:00+00:00",
+    "name": "Icarus Dedicated",
+    "author": "pavl21@users.noreply.github.com",
+    "description": "Dedicated server for Icarus (Steam AppID 2089300). Runs the Windows binary under Wine via the pavl21/icarus-dedicated yolks-style image, which already bundles WineHQ + SteamCMD + a pre-seeded wineprefix (vcrun2022, corefonts). Game files and updates are pulled from Steam, so installs are fast and the image is not tied to a game version. Maintained by pavl21.",
+    "features": [
+        "steam_disk_space"
+    ],
+    "docker_images": {
+        "ghcr.io/pavl21/icarus-dedicated:latest": "ghcr.io/pavl21/icarus-dedicated:latest",
+        "ghcr.io/pavl21/icarus-dedicated:v1": "ghcr.io/pavl21/icarus-dedicated:v1"
+    },
+    "file_denylist": [],
+    "startup": "wine ./Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe -Log -SteamServerName=\"${SERVER_NAME}\" -PORT=${SERVER_PORT} -QueryPort=${QUERY_PORT}",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"(Engine Initialization) Total time:\",\r\n    \"userInteraction\": []\r\n}",
+        "logs": "{\r\n    \"custom\": false,\r\n    \"location\": \"Icarus/Saved/Logs/Icarus.log\"\r\n}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# pavl21 / Icarus install script\n# Runs inside the same image as the runtime container so SteamCMD and Wine\n# are already present. /mnt/server is the Pterodactyl install-time mount of\n# the future /home/container volume.\nset -e\nmkdir -p /mnt/server\ncd /mnt/server\n\necho \"[pavl21-install] SteamCMD download — AppID ${SRCDS_APPID:-2089300}\"\n/home/container/steamcmd/steamcmd.sh \\\n    +@sSteamCmdForcePlatformType windows \\\n    +force_install_dir /mnt/server \\\n    +login anonymous \\\n    +app_update ${SRCDS_APPID:-2089300} validate \\\n    +quit\n\necho \"[pavl21-install] done\"\n",
+            "container": "ghcr.io/pavl21/icarus-dedicated:latest",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Name",
+            "description": "Name shown in the Steam server browser.",
+            "env_variable": "SERVER_NAME",
+            "default_value": "Icarus by pavl21",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64"
+        },
+        {
+            "name": "Server Port (Game)",
+            "description": "UDP port used by the game itself. Default: 17777.",
+            "env_variable": "SERVER_PORT",
+            "default_value": "17777",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1024,65535"
+        },
+        {
+            "name": "Query Port",
+            "description": "UDP port used by the Steam server query protocol. Default: 27015.",
+            "env_variable": "QUERY_PORT",
+            "default_value": "27015",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1024,65535"
+        },
+        {
+            "name": "Auto Update",
+            "description": "Run SteamCMD update on every server start. 1 = enabled, 0 = disabled.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|in:0,1"
+        },
+        {
+            "name": "Steam App ID",
+            "description": "Icarus Dedicated Server AppID on Steam. Do not change unless Valve ships a new branch.",
+            "env_variable": "SRCDS_APPID",
+            "default_value": "2089300",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer"
+        }
+    ]
+}

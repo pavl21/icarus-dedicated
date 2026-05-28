@@ -1,0 +1,22 @@
+## Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+## Local secrets (never commit)
+*.pem
+*.key
+*.token
+.env
+.env.*
+!.env.example
+
+## Build / runtime detritus that should never enter this repo
+node_modules/
+dist/
+build/
+out/
+*.log
