@@ -16,9 +16,10 @@
 # Out: ghcr.io/pavl21/icarus-dedicated:<tag>
 # ---------------------------------------------------------------------------
 
-# wine_latest = current stable WineHQ build maintained by parkervcp/yolks.
-# Switch to :wine_staging (or pin a SHA) if you need a different Wine branch.
-FROM ghcr.io/parkervcp/yolks:wine_latest
+# wine_staging = WineHQ staging tree maintained by parkervcp/yolks.
+# Picked over :wine_latest because staging tends to handle winetricks /
+# vcrun installers without spawning blocking dialogs under Xvfb.
+FROM ghcr.io/parkervcp/yolks:wine_staging
 
 LABEL org.opencontainers.image.source="https://github.com/pavl21/icarus-dedicated"
 LABEL org.opencontainers.image.title="Icarus Dedicated (pavl21)"
@@ -33,27 +34,51 @@ LABEL org.opencontainers.image.vendor="pavl21"
 ENV WINEARCH=win64 \
     WINEDEBUG=-all \
     WINEDLLOVERRIDES="mscoree=;mshtml=" \
-    PAVL21_PREFIX_SEED=/opt/pavl21/wineprefix
+    PAVL21_PREFIX_SEED=/opt/pavl21/wineprefix \
+    W_OPT_UNATTENDED=1 \
+    WINETRICKS_GUI=none \
+    DISPLAY=:99
 
 # --- Seed Wine prefix as the unprivileged container user ------------------
-# We need xvfb to run winetricks unattended (some installers spawn dialogs
-# even with -q). vcrun2022 + corefonts is what Icarus expects at runtime.
+# We need Xvfb because some MS redistributables spawn install dialogs even
+# with W_OPT_UNATTENDED=1, and Wine refuses to draw without an X server.
+# Every winetricks call is wrapped in `timeout` so a hung installer fails
+# the CI build instead of dragging it out to the 6h job ceiling.
 USER root
 RUN apt-get update \
- && apt-get install -y --no-install-recommends xvfb cabextract \
+ && apt-get install -y --no-install-recommends xvfb cabextract coreutils \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p ${PAVL21_PREFIX_SEED} \
  && chown -R container:container ${PAVL21_PREFIX_SEED} \
  && curl -fsSL https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks \
         -o /usr/local/bin/winetricks \
- && chmod +x /usr/local/bin/winetricks
+ && chmod +x /usr/local/bin/winetricks \
+ && winetricks --version
 
 USER container
-RUN WINEPREFIX=${PAVL21_PREFIX_SEED} WINEARCH=win64 \
-        xvfb-run -a wineboot --init \
- && WINEPREFIX=${PAVL21_PREFIX_SEED} \
-        xvfb-run -a winetricks -q --unattended vcrun2022 corefonts \
- && WINEPREFIX=${PAVL21_PREFIX_SEED} wineserver -w
+
+# Step 1: initialize prefix only (cheap, ~30s). If this hangs we know
+# the base Wine image itself is broken, not our verbs.
+RUN set -eux; \
+    export WINEPREFIX=${PAVL21_PREFIX_SEED} WINEARCH=win64; \
+    timeout 180 xvfb-run -a -s "-screen 0 1024x768x24" wineboot --init; \
+    wineserver -w
+
+# Step 2: corefonts — small, no installer dialogs, ~30s.
+RUN set -eux; \
+    export WINEPREFIX=${PAVL21_PREFIX_SEED}; \
+    timeout 300 xvfb-run -a -s "-screen 0 1024x768x24" \
+        winetricks -q --force --no-isolate --optout corefonts; \
+    wineserver -w
+
+# Step 3: vcrun2022 — the historically slow / dialog-prone verb. Verbose
+# output (-v) is on so CI logs show where it stalls if it stalls.
+RUN set -eux; \
+    export WINEPREFIX=${PAVL21_PREFIX_SEED}; \
+    timeout 900 xvfb-run -a -s "-screen 0 1024x768x24" \
+        winetricks -v -q --force --no-isolate --optout vcrun2022; \
+    wineserver -w
+
 USER root
 
 # --- Override entrypoint with the pavl21 variant ---------------------------
