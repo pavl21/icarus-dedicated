@@ -36,12 +36,21 @@ ENV WINEARCH=win64 \
 
 USER root
 RUN apt-get update \
- && apt-get install -y --no-install-recommends xvfb cabextract \
+ && apt-get install -y --no-install-recommends xvfb cabextract lib32gcc-s1 \
  && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks \
         -o /usr/local/bin/winetricks \
  && chmod +x /usr/local/bin/winetricks \
  && winetricks --version
+
+# SteamCMD — yolks:wine_staging ships Wine but not SteamCMD, so we drop the
+# Valve tarball into /home/container/steamcmd ourselves. Path is chosen to
+# match the convention used by other parkervcp eggs (e.g. source-engine).
+RUN mkdir -p /home/container/steamcmd \
+ && curl -fsSL https://media.steampowered.com/installer/steamcmd_linux.tar.gz \
+        | tar -xz -C /home/container/steamcmd \
+ && chown -R container:container /home/container/steamcmd \
+ && ln -sf /home/container/steamcmd/steamcmd.sh /usr/local/bin/steamcmd
 
 COPY --chown=container:container entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
