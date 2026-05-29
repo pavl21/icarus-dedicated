@@ -17,6 +17,12 @@ set -eo pipefail
 
 cd /home/container || { echo "[pavl21] FATAL: /home/container missing"; exit 1; }
 
+# Wings does not always export HOME for the egg-defined container user, so
+# fall back to /home/container explicitly. Without this, WINEPREFIX would
+# resolve to "/.wine" and wineboot would fail with
+# `wine: chdir to /.wine : No such file or directory`.
+export HOME="${HOME:-/home/container}"
+
 # ---- Knobs (egg variables) -----------------------------------------------
 AUTO_UPDATE="${AUTO_UPDATE:-1}"
 SRCDS_APPID="${SRCDS_APPID:-2089300}"
@@ -27,6 +33,11 @@ export WINEDEBUG="${WINEDEBUG:--all}"
 export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-mscoree=;mshtml=}"
 export W_OPT_UNATTENDED="${W_OPT_UNATTENDED:-1}"
 export WINETRICKS_GUI="${WINETRICKS_GUI:-none}"
+
+# Wine refuses to bootstrap into a directory it cannot enter; on some wings
+# mount layouts the auto-create inside wineboot races with the parent mount
+# and fails. Creating the prefix dir up front avoids that race.
+mkdir -p "${WINEPREFIX}"
 
 SEED_MARKER="${WINEPREFIX}/.pavl21_seeded"
 
@@ -75,10 +86,15 @@ fi
 # ship as a dedicated server).
 if [ "${AUTO_UPDATE}" = "1" ]; then
     echo "[pavl21] SteamCMD update — AppID ${SRCDS_APPID}"
+    # app_license_request is required for some anonymous AppIDs (Icarus DS
+    # included): without it, SteamCMD aborts with "state is 0x202 after
+    # update job" even though the metadata fetch succeeds.
     /home/container/steamcmd/steamcmd.sh \
         +@sSteamCmdForcePlatformType windows \
+        +@NoPromptForPassword 1 \
         +force_install_dir /home/container \
         +login anonymous \
+        +app_license_request "${SRCDS_APPID}" \
         +app_update "${SRCDS_APPID}" validate \
         +quit
 else
